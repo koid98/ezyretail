@@ -9,6 +9,8 @@ import 'package:ezyretail/helpers/license_file_handle.dart';
 import 'package:ezyretail/helpers/network_helper.dart';
 import 'package:ezyretail/helpers/sqflite_helper.dart';
 import 'package:ezyretail/pages/login_screen.dart';
+import 'package:ezyretail/pages/welcome_screen/sign_up_screen.dart';
+import 'package:ezyretail/pages/welcome_screen/version_options.dart';
 import 'package:ezyretail/themes/color_helper.dart';
 import 'package:ezyretail/tools/loading_indictor.dart';
 import 'package:flutter/material.dart';
@@ -205,7 +207,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         const Gap(10),
         ZoomTapAnimation(
           onTap: () {
-            // Get.to(() => const SingUpPage());
+            Get.to(() => const SignUpScreen());
           },
           child: Container(
             decoration: BoxDecoration(
@@ -318,7 +320,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           });
 
           if (licenceMode == 5) {
-            // Get.to(() => const VersionOptionsPage());
+            Get.to(() => const VersionOptionsPage());
           } else {
             if (licenceMode == 1) {
               enableUseCameraToScan = true;

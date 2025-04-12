@@ -1,6 +1,24 @@
+import 'dart:convert';
+
+import 'package:ezyretail/dialogs/app_activation_dialog.dart';
+import 'package:ezyretail/dialogs/cloud_pre_setup.dart';
+import 'package:ezyretail/dialogs/dealer_login_dialog.dart';
+import 'package:ezyretail/dialogs/edit_server_dialog.dart';
+import 'package:ezyretail/dialogs/email_input_dialog.dart';
+import 'package:ezyretail/dialogs/information_dialog.dart';
+import 'package:ezyretail/dialogs/pair_server_dialog.dart';
+import 'package:ezyretail/dialogs/warning_dialog.dart';
+import 'package:ezyretail/dialogs/yes_no_dialog.dart';
 import 'package:ezyretail/globals.dart';
+import 'package:ezyretail/helpers/network_helper.dart';
+import 'package:ezyretail/helpers/sqflite_helper.dart';
 import 'package:ezyretail/language/globalization.dart';
+import 'package:ezyretail/models/company_profile_model.dart';
+import 'package:ezyretail/models/dealer_model.dart';
+import 'package:ezyretail/models/user_model.dart';
+import 'package:ezyretail/modules/general_function.dart';
 import 'package:ezyretail/pages/menu_screen.dart';
+import 'package:ezyretail/pages/welcome_screen/change_app_version.dart';
 import 'package:ezyretail/themes/color_helper.dart';
 import 'package:ezyretail/tools/custom_text_button.dart';
 import 'package:ezyretail/tools/loading_indictor.dart';
@@ -30,6 +48,55 @@ class _LoginScreenState extends State<LoginScreen> {
 
   var nameController = TextEditingController();
   var passwordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if(licenceMode != 2) {
+      isPINLogin = usePinLogin;
+    } else {
+      isPINLogin = false;
+      nameController.text = "ADMIN";
+      passwordController.text = "Admin";
+    }
+
+    checkTrialDate();
+    // sendToSecondScreen();
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    nameController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+  }
+
+  Future<void> checkTrialDate() async {
+    if (!activateStatus) {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+
+      String trialExpDateStr = prefs.getString("trialExpDate") ?? "";
+
+      if (trialExpDateStr.isNotEmpty) {
+        DateTime trialExpDate = DateTime.parse(trialExpDateStr);
+        final DateTime currentDate = DateTime.now();
+
+        int daysPassed = trialExpDate.difference(currentDate).inDays;
+
+        if (daysPassed >= 0) {
+          await Get.dialog(
+              InformationDialog(content: "$daysPassed Days Remain"),
+              barrierDismissible: false);
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -771,6 +838,301 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> loginProcess() async {
+    if (nameController.text.trim() == '') {
+      if (isPINLogin) {
+        await Get.dialog(
+            WarningDialog(
+                title: Globalization.warning.tr,
+                content: Globalization.emptyFastLoginPIN.tr),
+            barrierDismissible: false);
+      } else {
+        await Get.dialog(
+            WarningDialog(
+                title: Globalization.warning.tr,
+                content: Globalization.emptyUserID.tr),
+            barrierDismissible: false);
+      }
+
+      return;
+    }
+
+    if (!isPINLogin) {
+      if (passwordController.text.trim() == '') {
+        await Get.dialog(
+            WarningDialog(
+                title: Globalization.warning.tr,
+                content: Globalization.emptyPassword.tr),
+            barrierDismissible: false);
+        return;
+      }
+    }
+
+    if (isPINLogin) {
+      String userId = nameController.text;
+      UsersModel? user =
+      await DatabaseHelper.instance.getMatchUserByPIN(userId);
+
+      if (user != null) {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        systemBatchKey = prefs.getString("batchKey") ?? "";
+
+        loginUserKey = user.userKey;
+        userAccess = user.access;
+        loginUserName = user.name;
+        loginUserPin = user.pin;
+        loginPass = user.password;
+
+        Get.offAll(() => const MenuScreen());
+      } else {
+        await Get.dialog(
+            WarningDialog(
+                title: Globalization.warning.tr,
+                content: Globalization.invalidLoginCred.tr),
+            barrierDismissible: false);
+      }
+    } else {
+      String userId = nameController.text;
+      String password = passwordController.text;
+
+      UsersModel? user = await DatabaseHelper.instance
+          .getMatchUserByUsername(userId.toLowerCase());
+
+      if (user != null) {
+        if (user.password != password) {
+          await Get.dialog(
+              WarningDialog(
+                  title: Globalization.warning.tr,
+                  content: Globalization.invalidLoginCred.tr),
+              barrierDismissible: false);
+          return;
+        } else {
+          final SharedPreferences prefs = await SharedPreferences.getInstance();
+          systemBatchKey = prefs.getString("batchKey") ?? "";
+
+          loginUserKey = user.userKey;
+          userAccess = user.access;
+          loginUserName = user.name;
+          loginUserPin = user.pin;
+          loginPass = user.password;
+
+          //Get Company Profile From DB
+          CompanyProfileModel? tempProfile =
+          await DatabaseHelper.instance.getCompanyProfile();
+
+          // await d1SecondDisplayHelper.initDisplay();
+
+          if (tempProfile != null) {
+            systemCompanyProfile = tempProfile;
+            // await d1SecondDisplayHelper.sendWelcomePage(systemCompanyProfile?.name);
+          }
+
+          Get.offAll(() => const MenuScreen());
+        }
+      } else {
+        await Get.dialog(
+            WarningDialog(
+                title: Globalization.warning.tr,
+                content: Globalization.invalidLoginCred.tr),
+            barrierDismissible: false);
+      }
+    }
+  }
+
+  Future<void> verifyDealerForAccess() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    String tmpLicenseKey = prefs.getString("LicenseKey") ?? "";
+
+    if (tmpLicenseKey.isEmpty) {
+      return;
+    }
+
+    DealerModel? dealerInfo =
+    await Get.dialog(const DealerLoginDialog(), barrierDismissible: false);
+
+    if (dealerInfo != null) {
+      setState(() {
+        isBusy = true;
+        busyMessage = Globalization.connectingToServer.tr;
+      });
+
+      final conn = NetWorkHelper();
+      String result = await conn.checkValidDealer(dealerInfo);
+
+      if (result == "SUCCESS") {
+        await Get.to(() => ChangeVersionPage(
+          dealerInfo: dealerInfo,
+        ));
+      } else {
+        await Get.dialog(
+            WarningDialog(title: Globalization.warning.tr, content: result),
+            barrierDismissible: false);
+      }
+
+      setState(() {
+        isBusy = false;
+        busyMessage = "";
+      });
+    }
+  }
+
+  Future<void> changeServerSettings() async {
+    if (companyId.isEmpty) {
+      await Get.dialog(
+          const WarningDialog(
+              content:
+              "Missing server info.\nPlease make sure your device has pair with server before access this option"),
+          barrierDismissible: false);
+      return;
+    }
+
+    var result =
+    await Get.dialog(const EditServerDialog(), barrierDismissible: false);
+  }
+
+  Future<void> pairServer() async {
+    var result =
+    await Get.dialog(const PairServerDialog(), barrierDismissible: false);
+  }
+
+  Future<void> activateDevice() async {
+    var result = await Get.dialog(const AppActivationDialog(),
+        barrierDismissible: false);
+
+    if (result != null) {
+      String licenceKey = result.toString();
+
+      if (licenceKey != "" && appId != "") {
+        setState(() {
+          isBusy = true;
+          busyMessage = "Connecting To Host";
+        });
+
+        final conn = NetWorkHelper();
+        result = await conn.activateLicenceOnly(appId.trim(), licenceKey);
+
+        if (result.toString() == "SUCCESS") {
+          setState(() {
+            isBusy = false;
+            busyMessage = "";
+          });
+
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool("SystemIsActivated", true);
+          activateStatus = true;
+          prefs.remove("trialExpDate");
+
+          await Get.dialog(const InformationDialog(content: "System Activated"),
+              barrierDismissible: false);
+        } else {
+          await Get.dialog(WarningDialog(content: result.toString()),
+              barrierDismissible: false);
+        }
+
+        setState(() {
+          isBusy = false;
+          busyMessage = "";
+        });
+      }
+    }
+  }
+
+  Future<void> resetAdminPassword() async {
+    bool confirmReset = false;
+
+    await Get.dialog(
+        YesNoDialog(
+            content:
+            "After you confirm, new password will send to your registered email.\nThis process cannot be revert, are you sure you want to continue?",
+            onConfirm: () {
+              confirmReset = true;
+              Get.back();
+            },
+            onCancel: () {
+              Get.back();
+            }),
+        barrierDismissible: false);
+
+    if (confirmReset) {
+      final conn = NetWorkHelper();
+
+      var regEmail = await Get.dialog(const EmailInputDialog(
+        title: "Please email",
+      ));
+
+      if (regEmail == null) {
+        return;
+      }
+
+      setState(() {
+        isBusy = true;
+        busyMessage = "Verifying Email";
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      String tmpLicense = prefs.getString("LicenseKey") ?? "";
+      String tmpAppId = prefs.getString("MachineId") ?? appId;
+
+      Map<String, dynamic> tmpAppInfo = {
+        'app_id': tmpAppId,
+        'license_key': tmpLicense,
+      };
+
+      String jsonString = jsonEncode(tmpAppInfo);
+
+      bool licenceStatus =
+      await conn.verifyRegisteredEmail(jsonString, regEmail);
+
+      if (!licenceStatus) {
+        await Get.dialog(
+            const WarningDialog(content: "Invalid email address entered"),
+            barrierDismissible: false);
+
+        setState(() {
+          isBusy = false;
+          busyMessage = "";
+        });
+
+        return;
+      }
+
+      setState(() {
+        busyMessage = "Generating new password";
+      });
+
+      String newPassword = generateRandomString(6).toUpperCase();
+
+      DealerModel dealerInfo = DealerModel(
+          dealerId: '',
+          dealerPassword: newPassword,
+          appId: tmpAppId,
+          licenceKey: tmpLicense);
+
+      String result = await conn.resetPassword(dealerInfo);
+
+      if (result.toString() == "SUCCESS") {
+        await DatabaseHelper.instance.resetAdminPassword(newPassword);
+
+        await Get.dialog(
+            const InformationDialog(content: "Password has been reset"),
+            barrierDismissible: false);
+      } else {
+        await Get.dialog(WarningDialog(content: result.toString()),
+            barrierDismissible: false);
+      }
+
+      setState(() {
+        isBusy = false;
+        busyMessage = "";
+      });
+    }
+  }
+
+  Future<void> connectCloudServer() async {
+    var connResult =
+    await Get.dialog(const CloudPreSetup(), barrierDismissible: false);
   }
 
   Widget numberPad() {

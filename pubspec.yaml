@@ -54,10 +54,14 @@ dependencies:
   permission_handler: ^11.3.1
   filesystem_picker: ^4.1.0
   encrypt: ^5.0.3
-  qr_code_scanner: ^1.0.1
+  qr_code_scanner_plus: ^2.0.6
   device_info_plus: ^10.1.2
   dart_ping: ^9.0.1
   simple_animations: ^5.0.2
+  country_pickers: ^3.0.1
+  mailer: ^6.2.0
+  file_picker: ^8.1.2
+  email_validator: ^3.0.0
 
 dev_dependencies:
   flutter_test:

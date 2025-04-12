@@ -282,3 +282,26 @@ class StockBarcode {
     return data;
   }
 }
+
+class ItemUom {
+  String itemUom;
+  double uomRate;
+  double itemPrice;
+
+  ItemUom({
+    required this.itemUom,
+    required this.uomRate,
+    required this.itemPrice,
+  });
+
+  ItemUom copyWith({
+    String? itemUom,
+    double? uomRate,
+    double? itemPrice,
+  }) =>
+      ItemUom(
+        itemUom: itemUom ?? this.itemUom,
+        uomRate: uomRate ?? this.uomRate,
+        itemPrice: itemPrice ?? this.itemPrice,
+      );
+}

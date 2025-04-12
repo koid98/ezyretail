@@ -3701,4 +3701,81 @@ class DatabaseHelper{
 
     return result;
   }
+
+  Future<UsersModel?> getMatchUserByPIN(String userPIN) async {
+    Database db = await instance.database;
+
+    var temp = await db
+        .rawQuery("SELECT * FROM $userTable WHERE $pin = '$userPIN' LIMIT 1;");
+
+    if (temp.isEmpty) {
+      return null;
+    } else {
+      var data = temp[0];
+
+      UsersModel user = UsersModel.fromDB(data);
+
+      return user;
+    }
+  }
+
+  Future<UsersModel?> getMatchUserByUsername(String id) async {
+    Database db = await instance.database;
+
+    var temp = await db.rawQuery(
+        "SELECT * FROM $userTable WHERE lower($userName) = '$id'  LIMIT 1;");
+
+    if (temp.isEmpty) {
+      return null;
+    } else {
+      var data = temp[0];
+      return UsersModel.fromDB(data);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getItemsListingSingle(
+      String itemQuery, int itemBatch, int itemLimit) async {
+    Database db = await instance.database;
+    List<Map<String, dynamic>> temp = [];
+
+    int batchCount = itemLimit * itemBatch;
+
+    try {
+      if (itemQuery.trim().isEmpty) {
+        String query =
+            "SELECT DISTINCT a.*, (SELECT COUNT(p.$itemCode) FROM $itemTable p WHERE p.$itemCode = a.$itemCode) AS UomCount, c.$itemImage "
+            "FROM $itemTable a LEFT JOIN $imageTable c ON c.$itemCode = a.$itemCode "
+            "WHERE $itemUom = $baseUom ORDER BY a.$itemCode, a.$uomQTY LIMIT $itemLimit OFFSET $batchCount";
+
+        temp = await db.rawQuery(query);
+      } else {
+        String query =
+            "SELECT DISTINCT a.*, (SELECT COUNT(p.$itemCode) FROM $itemTable p WHERE p.$itemCode = a.$itemCode) AS UomCount, c.$itemImage "
+            "FROM $itemTable a LEFT JOIN $imageTable c ON c.$itemCode = a.$itemCode "
+            "WHERE (a.$itemDesc LIKE '%$itemQuery%' OR a.$itemCode LIKE '%$itemQuery%') AND a.$itemUom = a.$baseUom "
+            "ORDER BY a.$itemCode, a.$uomQTY LIMIT $itemLimit OFFSET $batchCount";
+        temp = await db.rawQuery(query);
+      }
+
+      if (temp.isEmpty) {
+        String query =
+            "SELECT DISTINCT a.*, (SELECT COUNT(p.$itemCode) FROM $itemTable p WHERE p.$itemCode = a.$itemCode) AS UomCount, c.$itemImage "
+            "FROM $itemTable a LEFT JOIN $imageTable c ON c.$itemCode = a.$itemCode WHERE a.$itemCode = '$itemQuery' COLLATE NOCASE AND $itemUom = $baseUom";
+
+        temp = await db.rawQuery(query);
+
+        if (temp.isEmpty) {
+          temp = await db.rawQuery(
+              "SELECT DISTINCT a.*, (SELECT COUNT(p.$itemCode) FROM $itemTable p WHERE p.$itemCode = a.$itemCode) AS UomCount, c.$itemImage "
+                  "FROM $barcodeTable b JOIN $itemTable a ON b.$itemCode = a.$itemCode AND a.$itemUom = b.$itemUom LEFT JOIN $imageTable c ON c.$itemCode = a.$itemCode "
+                  "WHERE b.$itemBarcode = '$itemQuery' COLLATE NOCASE");
+        }
+      }
+    } catch (e, s) {
+      debugPrint(e.toString());
+      debugPrint(s.toString());
+    }
+
+    return temp;
+  }
 }
